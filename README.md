@@ -15,15 +15,47 @@ When no output file is given, GFF3 is written to standard output.
 
 - [Complete usage and CLI reference](docs/usage.md)
 - [Input/output and coordinate contract](docs/file-formats.md)
-- [Software design and extension points](docs/design.md)
-- [Support](SUPPORT.md)
-- [Contributing](CONTRIBUTING.md)
 
 ## Build
 
-Requirements: a C++17 compiler and GNU Make or MinGW Make. PowerShell is needed
-for the provided test scripts. zlib development files are optional and only
-needed for `.gz` input.
+Requirements: a C++17 compiler. CMake 3.16 or newer is recommended for
+cross-platform builds; CMake Presets require 3.21 or newer. GNU Make or MinGW
+Make remains available as a lightweight alternative. zlib development files
+are optional and only needed for `.gz` input.
+
+The build is configured for Linux, macOS, and Windows with GCC, Clang,
+AppleClang, and MSVC-compatible CMake generators.
+
+### CMake
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+```
+
+On multi-configuration generators such as Visual Studio, omit
+`-DCMAKE_BUILD_TYPE` if preferred; `--config Release` selects the build type.
+CMake Presets are available:
+
+```sh
+cmake --preset default
+cmake --build --preset default
+```
+
+Enable gzip input with CMake:
+
+```sh
+cmake -S . -B build-zlib -DINTERGENIC_USE_ZLIB=ON
+cmake --build build-zlib --config Release
+```
+
+Install with:
+
+```sh
+cmake --install build --config Release --prefix /your/install/prefix
+```
+
+### Make
 
 ```sh
 make
@@ -79,25 +111,8 @@ endpoint distance to either IGR boundary is at most 30 bp. Each item uses
 adjacent target feature. The field is a GFF attribute, the fifth BED column,
 and the third FASTA header field.
 
-## Test
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/smoke.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/comprehensive.ps1
-```
-
-`make test` runs both suites. The comprehensive suite adds CLI/error handling,
-annotation filtering, stdin, malformed inputs, randomized coordinate checks,
-and GFF/BED/FASTA consistency checks against the bundled example.
-
-Continuous integration is configured for GCC and Clang in
+Continuous integration covers Linux, macOS, and Windows in
 [.github/workflows/ci.yml](.github/workflows/ci.yml).
-
-## Contributing and support
-
-Please use the public issue tracker for reproducible bug reports and feature
-requests. See [SUPPORT.md](SUPPORT.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
-Security reports should follow [SECURITY.md](SECURITY.md).
 
 ## License
 

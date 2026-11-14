@@ -1,0 +1,21 @@
+* text=auto
+
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.md text eol=lf
+*.ps1 text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.cff text eol=lf
+Makefile text eol=lf
+CMakeLists.txt text eol=lf
+CMakePresets.json text eol=lf
+COPYING text eol=lf
+LICENSE text eol=lf
+*.fa text eol=lf
+*.fna text eol=lf
+*.gff text eol=lf
+*.bed text eol=lf
+*.fastq text eol=lf
+*.gbk text eol=lf
+*.embl text eol=lf

@@ -3,24 +3,38 @@
 ## Requirements
 
 - A C++17 compiler;
-- GNU Make or MinGW Make;
-- PowerShell for the provided test scripts;
+- CMake 3.16 or newer for the recommended cross-platform build; presets
+  require CMake 3.21 or newer;
+- GNU Make or MinGW Make as a lightweight alternative;
 - zlib headers and libraries only for `.gz` input.
 
 ## Build
+
+The CMake build supports Linux, macOS, and Windows, including GCC, Clang,
+AppleClang, and MSVC:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+```
+
+To enable gzip input:
+
+```sh
+cmake -S . -B build-zlib -DINTERGENIC_USE_ZLIB=ON
+cmake --build build-zlib --config Release
+```
 
 Linux and macOS:
 
 ```sh
 make
-make test
 ```
 
 Windows with MinGW:
 
 ```powershell
 mingw32-make
-mingw32-make test
 ```
 
 Enable gzip input:

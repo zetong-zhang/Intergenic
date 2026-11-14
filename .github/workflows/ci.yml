@@ -8,7 +8,28 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  platform-build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+  compiler-matrix:
+    name: Linux with ${{ matrix.compiler }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -25,12 +46,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes make g++ clang
 
-      - name: Build and test
+      - name: Build
         env:
           CXX: ${{ matrix.compiler }}
-        run: make clean all test
+        run: make clean all
 
   zlib-build:
+    name: Linux with zlib
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -39,7 +61,24 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes make g++ zlib1g-dev
+          sudo apt-get install --yes zlib1g-dev
 
-      - name: Build with gzip support
-        run: make clean all USE_ZLIB=1
+      - name: Configure
+        run: cmake -S . -B build-zlib -DCMAKE_BUILD_TYPE=Release -DINTERGENIC_USE_ZLIB=ON
+
+      - name: Build
+        run: cmake --build build-zlib --config Release
+
+      - name: Verify gzip input
+        shell: bash
+        run: |
+          plain="${RUNNER_TEMP}/plain.gff"
+          gzipped="${RUNNER_TEMP}/gzipped.gff"
+          gzip -c example.fa > "${RUNNER_TEMP}/example.fa.gz"
+          gzip -c example.gff > "${RUNNER_TEMP}/example.gff.gz"
+          ./build-zlib/intergenic -q -i example.fa -a example.gff -o "${plain}"
+          ./build-zlib/intergenic -q -i "${RUNNER_TEMP}/example.fa.gz" \
+            -a "${RUNNER_TEMP}/example.gff.gz" -o "${gzipped}"
+          cmp \
+            <(grep -v '^#' "${plain}") \
+            <(grep -v '^#' "${gzipped}")
