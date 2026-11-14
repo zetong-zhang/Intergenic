@@ -2,3 +2,7 @@ intergenic
 intergenic.exe
 *.o
 *.obj
+*.gcda
+*.gcno
+*.gcov
+_coverage/

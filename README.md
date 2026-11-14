@@ -11,7 +11,19 @@ extension:
 
 When no output file is given, GFF3 is written to standard output.
 
+## Documentation
+
+- [Complete usage and CLI reference](docs/usage.md)
+- [Input/output and coordinate contract](docs/file-formats.md)
+- [Software design and extension points](docs/design.md)
+- [Support](SUPPORT.md)
+- [Contributing](CONTRIBUTING.md)
+
 ## Build
+
+Requirements: a C++17 compiler and GNU Make or MinGW Make. PowerShell is needed
+for the provided test scripts. zlib development files are optional and only
+needed for `.gz` input.
 
 ```sh
 make
@@ -33,7 +45,7 @@ make USE_ZLIB=1
 
 ```sh
 ./intergenic -i example.fa -a example.gff -o intergenic.gff
-./intergenic -i example.fa -a example.bed -f BED -o intergenic.bed
+./intergenic -i genome.fa -a annotation.bed -f BED -o intergenic.bed
 ./intergenic -i example.fa -a example.gff -o intergenic.fa
 ```
 
@@ -71,9 +83,24 @@ and the third FASTA header field.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/smoke.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/comprehensive.ps1
 ```
+
+`make test` runs both suites. The comprehensive suite adds CLI/error handling,
+annotation filtering, stdin, malformed inputs, randomized coordinate checks,
+and GFF/BED/FASTA consistency checks against the bundled example.
+
+Continuous integration is configured for GCC and Clang in
+[.github/workflows/ci.yml](.github/workflows/ci.yml).
+
+## Contributing and support
+
+Please use the public issue tracker for reproducible bug reports and feature
+requests. See [SUPPORT.md](SUPPORT.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+Security reports should follow [SECURITY.md](SECURITY.md).
 
 ## License
 
 Intergenic is distributed under the GNU General Public License, version 3.
-See [LICENSE](LICENSE) for the project and third-party notices.
+See [LICENSE](LICENSE) for the project and third-party notices and
+[COPYING](COPYING) for the complete license text.

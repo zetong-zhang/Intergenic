@@ -6,6 +6,11 @@
 #include <unordered_set>
 #include <vector>
 
+/*
+ * Annotation intervals are stored with 0-based, end-exclusive coordinates.
+ * A wrapped interval has start > end and represents bases from start to the
+ * end of its sequence followed by bases from the beginning of the sequence.
+ */
 class feature {
     public:
     feature(std::string host, std::string type, int start, int end,
@@ -27,6 +32,12 @@ class feature {
     char strand_;
 };
 
+/*
+ * Loads target features from GFF/BED and records which sequence names appear
+ * in the external file. A recorded name takes precedence over embedded
+ * GenBank/EMBL features for that sequence, even if all external features are
+ * filtered out by type or score.
+ */
 class feature_loader {
     public:
     feature_loader() = default;
@@ -51,6 +62,11 @@ class feature_loader {
     float threshold_ = 0.0F;
 };
 
+/*
+ * An extracted intergenic region. Coordinates and adjacency lists follow the
+ * same conventions as feature intervals. The sequence is stored in output
+ * orientation, including the joined sequence for an origin-spanning region.
+ */
 class region {
     public:
     region(
@@ -71,6 +87,11 @@ class region {
     int start_, end_;
 };
 
+/*
+ * Reads one FASTA/FASTQ/GenBank/EMBL record at a time. The next record remains
+ * pending in FASTA streams, allowing arbitrarily large multi-record inputs to
+ * be handled incrementally.
+ */
 class scaffold {
     public:
     bool load(std::istream &handle, bool default_circular = false);

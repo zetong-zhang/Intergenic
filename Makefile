@@ -12,8 +12,10 @@ endif
 
 ifeq ($(OS),Windows_NT)
 TARGET := intergenic.exe
+POWERSHELL ?= powershell
 else
 TARGET := intergenic
+POWERSHELL ?= pwsh
 endif
 SOURCES := src/Intergenic.cpp src/Classes.cpp src/Utils.cpp
 HEADERS := include/Classes.hpp include/Utils.hpp include/cxxopts.hpp
@@ -26,7 +28,8 @@ $(TARGET): $(SOURCES) $(HEADERS)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -Iinclude $(SOURCES) -o $@ $(LDFLAGS) $(LDLIBS)
 
 test: $(TARGET)
-	powershell -NoProfile -ExecutionPolicy Bypass -File tests/smoke.ps1 -Binary ./$(TARGET)
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tests/smoke.ps1 -Binary ./$(TARGET)
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File tests/comprehensive.ps1 -Binary ./$(TARGET)
 
 ifeq ($(OS),Windows_NT)
 clean:

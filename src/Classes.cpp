@@ -42,6 +42,9 @@ std::string trim(const std::string &text) {
 bool location_bounds(
     const std::string &location, int &start, int &end
 ) {
+    // GenBank/EMBL locations may use complement(), join(), or order(). For
+    // masking, the first coordinate through the last coordinate represents
+    // the complete target span; this also preserves a circular wrapped span.
     std::vector<int> coordinates;
     for (size_t i = 0; i < location.size();) {
         if (!std::isdigit((unsigned char) location[i])) {
@@ -235,6 +238,9 @@ void scaffold::parse_feature_line(const std::string &line) {
 bool scaffold::is_adjacent(
     int start, int end, const feature &item
 ) const {
+    // "Adjacent" means an endpoint is at most 30 bp from either IGR boundary.
+    // The circular comparison is performed with wrapped coordinate copies so
+    // both IGRs and features may cross the origin.
     const auto length = (int) sequence_.size();
     auto feature_start = item.start();
     auto feature_end = item.end();
@@ -260,6 +266,8 @@ bool scaffold::is_adjacent(
 std::string scaffold::adjacent_features(
     int start, int end, const std::vector<feature> &masks
 ) const {
+    // Emit complete, user-readable target coordinates in stable genomic order.
+    // Output coordinates are 1-based and inclusive.
     using coordinate = std::tuple<std::string, int, int, char>;
     std::vector<coordinate> coordinates;
     for (const auto &item : masks) {
@@ -289,6 +297,8 @@ std::string scaffold::adjacent_features(
 void scaffold::mask(
     std::vector<char> &covered, const feature &item
 ) const {
+    // Clamp annotations to the sequence, and mask both pieces of a wrapped
+    // feature on a circular scaffold.
     if (item.length() == 0) return;
     const auto length = (int) sequence_.size();
     if (circular_ && item.wrapped()) {
@@ -313,6 +323,8 @@ std::string scaffold::subseq(int start, int end) const {
 std::vector<region> scaffold::extract(
     const std::vector<feature> &masks, int minlen
 ) const {
+    // Build the unmasked runs first. On a circular sequence, runs touching the
+    // two sequence ends are one region crossing the origin.
     const auto length = (int) sequence_.size();
     if (length <= 0) return {};
 
@@ -336,6 +348,8 @@ std::vector<region> scaffold::extract(
 
     std::vector<region> results;
     for (const auto &[start, end] : runs) {
+        // Apply the minimum length after merging circular end runs so the
+        // reported length matches the complete biological IGR.
         const auto size = start <= end ? end-start : end+length-start;
         if (size >= minlen)
             results.emplace_back(
@@ -359,6 +373,7 @@ bool scaffold::load(std::istream &handle, bool default_circular) {
     }
 
     if (line[0] == '>') {
+        // FASTA: sequence continues until the next header.
         read_header(line, default_circular);
         while (next_line(handle, line)) {
             if (!line.empty() && line[0] == '>') {
@@ -369,6 +384,7 @@ bool scaffold::load(std::istream &handle, bool default_circular) {
         }
         normalize(sequence_);
     } else if (line[0] == '@') {
+        // FASTQ: ignore quality values after verifying their length.
         read_header(line, default_circular);
         bool separator_found = false;
         while (next_line(handle, line)) {
@@ -387,6 +403,8 @@ bool scaffold::load(std::istream &handle, bool default_circular) {
         if (quality.size() != sequence_.size())
             logger("Error: FASTQ sequence and quality lengths differ");
     } else if (startswith(line, "LOCUS") || startswith(line, "ID")) {
+        // GenBank/EMBL: parse embedded feature locations until ORIGIN/SQ,
+        // then collect sequence lines until the record terminator.
         name_ = record_name(line);
         if (name_.empty()) logger("Error: invalid LOCUS/ID line");
         if (covered_by_header(line)) circular_ = true;
