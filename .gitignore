@@ -12,6 +12,10 @@ _cmake-*/
 _install-*/
 _CPack_Packages/
 intergenic-*.zip
+motif-scan.csv
+/intergenic.gff
+/intergenic.bed
+/intergenic.fa
 CMakeCache.txt
 CMakeFiles/
 CMakeScripts/

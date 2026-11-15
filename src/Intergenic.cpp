@@ -1,5 +1,6 @@
 #include <array>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -13,9 +14,10 @@
 #include "cxxopts.hpp"
 
 #include "Classes.hpp"
+#include "Motif.hpp"
 #include "Utils.hpp"
 
-#define VERSION "INTERGENIC_v0.0.1"
+#define VERSION "INTERGENIC_v0.0.2"
 
 /*
  * - GFF/BED annotations are resolved per sequence. A matching external
@@ -33,153 +35,181 @@ namespace {
 constexpr size_t ID_MIN_WIDTH = 6;
 
 std::unordered_set<std::string> split_csv(const std::string &text) {
-    std::unordered_set<std::string> values;
-    std::istringstream stream(text);
-    std::string value;
-    while (std::getline(stream, value, ',')) values.insert(value);
-    return values;
+    std::unordered_set<std::string> out;
+    std::istringstream in(text);
+    std::string s;
+    while (std::getline(in, s, ',')) out.insert(s);
+    return out;
 }
 
 }  // namespace
 
 class Intergenic {
     private:
-    cxxopts::ParseResult args_;
-    feature_loader annotations_;
-    std::vector<region> regions_;
+    cxxopts::ParseResult args;
+    feature_loader loader;
+    std::vector<region> rs;
+    std::vector<motif_matrix> pwm;
+    std::vector<motif_hit> hits;
+    double cut = 10.0;
 
     enum class OutputFormat { GFF, BED, FASTA };
 
     static std::istringstream open_input(
-        const std::string &path, const std::string &label
+        const std::string &p, const std::string &kind
     ) {
         // Read the source once so FASTA, GenBank, and other parsers can consume
         // the same stream abstraction; stdin and gzip remain transparent.
         std::string data;
-        if (path == "-") {
+        if (p == "-") {
             data.assign(std::istreambuf_iterator<char>(std::cin),
                         std::istreambuf_iterator<char>());
-        } else if (endswith(lower(path), ".gz")) {
+        } else if (endswith(lower(p), ".gz")) {
         #if defined(ZLIB)
-            gzFile handle = gzopen(path.c_str(), "rb");
-            if (handle == nullptr)
-                logger("Error: cannot open " + label + " file '" + path + "'");
+            gzFile z = gzopen(p.c_str(), "rb");
+            if (z == nullptr)
+                logger("Error: cannot open " + kind + " file '" + p + "'");
             std::array<char, 32768> buffer;
             int count = 0;
-            while ((count = gzread(handle, buffer.data(), buffer.size())) > 0)
+            while ((count = gzread(z, buffer.data(), buffer.size())) > 0)
                 data.append(buffer.data(), count);
             if (count < 0)
-                logger("Error: failed to decompress " + label + " file '" + path + "'");
-            gzclose(handle);
+                logger("Error: failed to decompress " + kind + " file '" + p + "'");
+            gzclose(z);
         #else
             logger("Error: gzip support was not enabled when this program was built");
         #endif
         } else {
-            std::ifstream handle(path, std::ios::binary);
-            if (!handle.is_open())
-                logger("Error: cannot open " + label + " file '" + path + "'");
-            data.assign(std::istreambuf_iterator<char>(handle),
-                        std::istreambuf_iterator<char>());
+            std::ifstream in(p, std::ios::binary);
+            if (!in.is_open())
+                logger("Error: cannot open " + kind + " file '" + p + "'");
+            in.seekg(0, std::ios::end);
+            const auto size = in.tellg();
+            if (size >= 0) {
+                data.resize((size_t) size);
+                in.seekg(0, std::ios::beg);
+                if (!data.empty())
+                    in.read(data.data(), (std::streamsize) data.size());
+            } else {
+                in.clear();
+                in.seekg(0, std::ios::beg);
+                data.assign(std::istreambuf_iterator<char>(in),
+                            std::istreambuf_iterator<char>());
+            }
         }
         return std::istringstream(std::move(data));
     }
 
-    static OutputFormat output_format(const std::string &path) {
+    static OutputFormat output_format(const std::string &p) {
         // The output extension is the user-facing format selector. Unknown
         // extensions fall back to GFF, matching stdout behavior.
-        const auto name = lower(filename(path));
+        const auto name = lower(filename(p));
         if (endswith(name, ".bed")) return OutputFormat::BED;
         if (endswith(name, ".fa") || endswith(name, ".fasta") ||
                 endswith(name, ".fna")) return OutputFormat::FASTA;
         return OutputFormat::GFF;
     }
 
-    static size_t id_width(size_t count) {
+    static size_t id_width(size_t n) {
         return std::max<size_t>(
-            ID_MIN_WIDTH, std::to_string(std::max<size_t>(count, 1)).size()
+            ID_MIN_WIDTH, std::to_string(std::max<size_t>(n, 1)).size()
         );
     }
 
-    static std::string region_id(size_t index, size_t width) {
+    static std::string region_id(size_t i, size_t w) {
         // IDs are at least six digits wide and expand automatically for large
         // result sets, keeping IDs sortable and unambiguous.
         std::ostringstream id;
         id << 'I' << 'G' << 'S' << std::setfill('0')
-           << std::setw((int) width) << index;
+           << std::setw((int) w) << i;
         return id.str();
     }
 
     static void write_gff(
-        std::ostream &handle, const std::vector<region> &regions
+        std::ostream &out, const std::vector<region> &rs
     ) {
         // Keep one row per IGR, including origin-spanning intervals, as
         // required by the normalized output convention.
-        handle << "##gff-version 3\n# Generated by " << VERSION << '\n';
-        const auto width = id_width(regions.size());
-        size_t index = 0;
-        for (const auto &item : regions) {
-            index ++;
-            handle << item.host() << '\t' << VERSION << "\tintergenic\t"
-                   << item.start()+1 << '\t' << item.end()
-                   << "\t.\t.\t.\tID=" << region_id(index, width)
-                   << ";Adjacent=" << item.adjacent() << '\n';
+        out << "##gff-version 3\n# Generated by " << VERSION << '\n';
+        const auto w = id_width(rs.size());
+        size_t i = 0;
+        for (const auto &r : rs) {
+            i ++;
+            out << r.host() << '\t' << VERSION << "\tintergenic\t"
+                << r.start()+1 << '\t' << r.end()
+                << "\t.\t.\t.\tID=" << region_id(i, w)
+                << ";Adjacent=" << r.adjacent() << '\n';
         }
     }
 
     static void write_bed(
-        std::ostream &handle, const std::vector<region> &regions
+        std::ostream &out, const std::vector<region> &rs
     ) {
         // Columns: host, start, end, ID, Adjacent=...
-        handle << "# Generated by " << VERSION << '\n';
-        const auto width = id_width(regions.size());
-        for (size_t index = 0; index < regions.size(); index ++) {
-            const auto &item = regions[index];
-            handle << item.host() << '\t' << item.start() << '\t'
-                   << item.end() << '\t'
-                   << region_id(index+1, width) << '\t'
-                   << "Adjacent=" << item.adjacent() << '\n';
+        out << "# Generated by " << VERSION << '\n';
+        const auto w = id_width(rs.size());
+        for (size_t i = 0; i < rs.size(); i ++) {
+            const auto &r = rs[i];
+            out << r.host() << '\t' << r.start() << '\t'
+                << r.end() << '\t' << region_id(i+1, w) << '\t'
+                << "Adjacent=" << r.adjacent() << '\n';
         }
     }
 
     static void write_fasta(
-        std::ostream &handle, const std::vector<region> &regions
+        std::ostream &out, const std::vector<region> &rs
     ) {
         // Header: >host:start..end(strand) ID=... Adjacent=...
-        const auto width = id_width(regions.size());
-        for (size_t index = 0; index < regions.size(); index ++) {
-            const auto &item = regions[index];
-            handle << '>' << item.host() << ':' << item.start()+1 << ".."
-                   << item.end() << "(.) ID=" << region_id(index+1, width)
-                   << " Adjacent=" << item.adjacent() << '\n';
-            for (size_t i = 0; i < item.sequence().size(); i += 70)
-                handle << item.sequence().substr(i, 70) << '\n';
+        const auto w = id_width(rs.size());
+        for (size_t i = 0; i < rs.size(); i ++) {
+            const auto &r = rs[i];
+            out << '>' << r.host() << ':' << r.start()+1 << ".."
+                << r.end() << "(.) ID=" << region_id(i+1, w)
+                << " Adjacent=" << r.adjacent() << '\n';
+            for (size_t j = 0; j < r.sequence().size(); j += 70)
+                out << r.sequence().substr(j, 70) << '\n';
         }
     }
 
     static void write_regions(
-        std::ostream &handle, OutputFormat format,
-        const std::vector<region> &regions
+        std::ostream &out, OutputFormat fmt, const std::vector<region> &rs
     ) {
-        if (format == OutputFormat::BED) write_bed(handle, regions);
-        else if (format == OutputFormat::FASTA) write_fasta(handle, regions);
-        else write_gff(handle, regions);
+        if (fmt == OutputFormat::BED) write_bed(out, rs);
+        else if (fmt == OutputFormat::FASTA) write_fasta(out, rs);
+        else write_gff(out, rs);
     }
 
-    void extract_stream(std::istream &handle, int minlen) {
+    void validate_stdin() const {
+        int n = 0;
+        for (const auto &k : {"anno", "input", "meme"}) {
+            if (args.count(k) && args[k].as<std::string>() == "-") n ++;
+        }
+        if (n > 1)
+            logger("Error: only one input source may use stdin");
+    }
+
+    static std::string csv_field(const std::string &s) {
+        if (s.find_first_of(",\"\r\n") == std::string::npos) return s;
+        std::string r = "\"";
+        for (char c : s) {
+            if (c == '"') r += "\"\"";
+            else r += c;
+        }
+        r += '"';
+        return r;
+    }
+
+    void extract_stream(std::istream &in, int min) {
         // Resolution is intentionally inside the scaffold loop so every
         // sequence can independently choose external or embedded annotations.
-        scaffold current;
-        while (current.load(handle, args_.count("circ"))) {
-            auto masks = annotations_.resolve(
-                current.name(), current.embedded_features()
-            );
-            auto extracted = current.extract(
-                masks, minlen
-            );
-            regions_.insert(
-                regions_.end(),
-                std::make_move_iterator(extracted.begin()),
-                std::make_move_iterator(extracted.end())
+        scaffold sc;
+        while (sc.load(in, args.count("circ"))) {
+            auto ms = loader.resolve(sc.name(), sc.embedded_features());
+            auto got = sc.extract(ms, min);
+            rs.insert(
+                rs.end(),
+                std::make_move_iterator(got.begin()),
+                std::make_move_iterator(got.end())
             );
         }
     }
@@ -187,59 +217,115 @@ class Intergenic {
     void load_annotations() {
         // -t selects target feature types and -s sets the inclusive minimum
         // score. Missing -a is valid; GenBank/EMBL then use embedded features.
-        const auto types = split_csv(args_["types"].as<std::string>());
-        if (types.empty())
+        const auto ts = split_csv(args["types"].as<std::string>());
+        if (ts.empty())
             logger("Error: specified no feature type to exclude");
 
-        const auto format = lower(args_["format"].as<std::string>());
-        if (format != "gff" && format != "bed")
+        const auto fmt = lower(args["format"].as<std::string>());
+        if (fmt != "gff" && fmt != "bed")
             logger("Error: unsupported annotation file format");
-        annotations_ = feature_loader(types, args_["score"].as<float>());
+        loader = feature_loader(ts, args["score"].as<float>());
 
-        if (!args_.count("anno")) return;
-        const auto infile = args_["anno"].as<std::string>();
-        if (infile == "-" && args_.count("input") &&
-                args_["input"].as<std::string>() == "-")
-            logger("Error: annotation and genome cannot both be read from stdin");
+        if (!args.count("anno")) return;
+        const auto fn = args["anno"].as<std::string>();
 
-        auto handle = open_input(infile, "annotation");
-        annotations_.load(handle, format);
+        auto in = open_input(fn, "annotation");
+        loader.load(in, fmt);
     }
 
     void extract() {
         // Generate regions in input order and preserve ID numbering across
         // multiple scaffolds.
-        if (!args_.count("input"))
+        if (!args.count("input"))
             logger("Error: specified no input genome file");
-        const auto input = args_["input"].as<std::string>();
-        const auto minlen = args_["minlen"].as<int>();
-        if (minlen < 0)
+        const auto fn = args["input"].as<std::string>();
+        const auto min = args["minlen"].as<int>();
+        if (min < 0)
             logger("Error: minimum region length cannot be negative");
 
-        regions_.clear();
-        if (input == "-") extract_stream(std::cin, minlen);
+        rs.clear();
+        if (fn == "-") extract_stream(std::cin, min);
         else {
-            auto handle = open_input(input, "genome");
-            extract_stream(handle, minlen);
+            auto in = open_input(fn, "genome");
+            extract_stream(in, min);
+        }
+    }
+
+    void load_motifs() {
+        if (!args.count("meme")) return;
+        cut = args["cut"].as<double>();
+        if (!std::isfinite(cut))
+            logger("Error: motif score threshold must be finite");
+
+        const auto fn = args["meme"].as<std::string>();
+        auto in = open_input(fn, "motif");
+        pwm = motif_matrix::load(in);
+    }
+
+    void scan_motifs() {
+        hits.clear();
+        if (pwm.empty()) return;
+
+        for (size_t i = 0; i < rs.size(); i ++) {
+            auto got = motif_scanner::scan(
+                rs[i], i, pwm, cut
+            );
+            hits.insert(
+                hits.end(),
+                std::make_move_iterator(got.begin()),
+                std::make_move_iterator(got.end())
+            );
+        }
+    }
+
+    void write_report() {
+        if (pwm.empty()) return;
+        const auto fn = args["report"].as<std::string>();
+        const auto out_fn = args.count("output") ?
+            args["output"].as<std::string>() : "-";
+        if (fn == out_fn)
+            logger("Error: motif report and sequence output must use different files");
+        if (fn == "-" && out_fn == "-")
+            logger("Error: sequence output and motif report cannot both use stdout");
+
+        std::ofstream f;
+        std::ostream *out = &std::cout;
+        if (fn != "-") {
+            f.open(fn);
+            if (!f.is_open())
+                logger("Error: cannot open motif report file '" + fn + "'");
+            out = &f;
+        }
+
+        *out << "id,host,igr_start,igr_end,motif,strand,start,end,score,sequence\n";
+        const auto w = id_width(rs.size());
+        for (const auto &h : hits) {
+            *out << region_id(h.region_index()+1, w) << ','
+                 << csv_field(h.host()) << ','
+                 << h.igr_start() << ',' << h.igr_end() << ','
+                 << csv_field(h.motif()) << ',' << h.strand() << ','
+                 << h.start() << ',' << h.end() << ','
+                 << std::fixed << std::setprecision(6) << h.score() << ','
+                 << csv_field(h.sequence()) << '\n';
         }
     }
 
     void write_outputs() {
         // Select the format once, then reuse the same stream path for stdout
         // and regular files.
-        const auto path = args_.count("output") ?
-                          args_["output"].as<std::string>() : "-";
-        const auto format = output_format(path);
+        const auto fn = args.count("output") ?
+                        args["output"].as<std::string>() : "-";
+        const auto fmt = output_format(fn);
 
-        std::ofstream file;
-        std::ostream *handle = &std::cout;
-        if (path != "-") {
-            file.open(path);
-            if (!file.is_open())
-                logger("Error: cannot open output file '" + path + "'");
-            handle = &file;
+        std::ofstream f;
+        std::ostream *out = &std::cout;
+        if (fn != "-") {
+            f.open(fn);
+            if (!f.is_open())
+                logger("Error: cannot open output file '" + fn + "'");
+            out = &f;
         }
-        write_regions(*handle, format, regions_);
+        write_regions(*out, fmt, rs);
     }
 
     public:
@@ -263,21 +349,29 @@ class Intergenic {
 
         options.add_options("Options")
             ("c,circ",     "Treat default topology as circular.")
-            ("l,minlen",   "Specify the mininum length of intergenic regions.",
+            ("l,minlen",   "Specify the minimum length of intergenic regions.",
             cxxopts::value<int>()->default_value("90"))
-            ("t,types",    "Specify types of features to exclude (comma-splited list).",
+            ("t,types",    "Specify types of features to exclude (comma-separated list).",
             cxxopts::value<std::string>()->default_value("CDS"))
             ("s,score",    "Specify the mininum score threshold of features to exclude.",
             cxxopts::value<float>()->default_value("0"));
 
+        options.add_options("Motif scanning")
+            ("m,meme",     "Specify a MEME 4 motif matrix file (*.gz, '-' = stdin).",
+            cxxopts::value<std::string>())
+            ("r,report",   "Write motif scan hits to CSV (default: motif-scan.csv).",
+            cxxopts::value<std::string>()->default_value("motif-scan.csv"))
+            ("S,cut",      "Report hits with log2 likelihood-ratio score strictly greater than this value.",
+            cxxopts::value<double>()->default_value("10"));
+
         try {
-            args_ = options.parse(argc, argv);
+            args = options.parse(argc, argv);
         } catch (const std::exception &error) {
             logger("Error: " + std::string(error.what()) +
                    "\nUse '-h' or '--help' to show help info");
         }
 
-        if (argc <= 1 || args_.count("help")) {
+        if (argc <= 1 || args.count("help")) {
             std::cout << "- - - - - - - - - - - - - - - - - - - - - - - - - -\n"
                          "INTERGENIC: AN INTERGENIC REGION EXTRACTION TOOLKIT\n\n"
                          "Copyright:  (C) 2026 TUBIC, Tianjin University     \n"
@@ -289,16 +383,20 @@ class Intergenic {
                       << " -i example.fa -a example.gff -o intergenic.gff\n";
             std::exit(0);
         }
-        if (args_.count("version")) {
+        if (args.count("version")) {
             std::cout << VERSION << '\n';
             std::exit(0);
         }
     }
 
     void Run() {
+        validate_stdin();
         load_annotations();
         extract();
+        load_motifs();
+        scan_motifs();
         write_outputs();
+        write_report();
     }
 };
 

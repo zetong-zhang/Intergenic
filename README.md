@@ -111,6 +111,25 @@ endpoint distance to either IGR boundary is at most 30 bp. Each item uses
 adjacent target feature. The field is a GFF attribute, the fifth BED column,
 and the third FASTA header field.
 
+## Motif scanning
+
+Provide a MEME 4 matrix file with `-m`. Intergenic slides every motif across the
+extracted intergenic sequences and writes an additional CSV report:
+
+```sh
+./intergenic -i example.fa -a example.gff \
+  -m motif.meme -r motif-hits.csv -o intergenic.gff
+```
+
+Scores are the sum of per-base log2 likelihood ratios relative to the MEME
+background. Hits are reported only when `score > threshold`. The default
+threshold is `10` and can be changed with `-S/--cut`. The default report name is
+`motif-scan.csv`; `-r/--report` selects another path.
+
+Both strands are scanned when the MEME record contains `strands: + -`. The CSV
+contains the IGR ID, IGR coordinates, motif coordinates, strand, score, and the
+matched sequence in motif orientation.
+
 Continuous integration covers Linux, macOS, and Windows in
 [.github/workflows/ci.yml](.github/workflows/ci.yml).
 

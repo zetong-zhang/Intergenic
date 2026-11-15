@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(
   Intergenic
-  VERSION 0.0.1
+  VERSION 0.0.2
   DESCRIPTION "Format-aware extraction of intergenic regions"
   LANGUAGES CXX
 )
@@ -15,6 +15,7 @@ add_executable(
   intergenic
   src/Intergenic.cpp
   src/Classes.cpp
+  src/Motif.cpp
   src/Utils.cpp
 )
 

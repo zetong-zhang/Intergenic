@@ -72,6 +72,9 @@ Without `-o`, GFF is written to stdout.
 | `-l, --minlen N` | Minimum IGR length. Default: `90`. |
 | `-t, --types LIST` | Comma-separated target feature types. Default: `CDS`. |
 | `-s, --score X` | Inclusive minimum target-feature score. Default: `0`. |
+| `-m, --meme FILE` | Scan extracted IGRs with a MEME 4 motif matrix. |
+| `-r, --report FILE` | Motif CSV output. Default: `motif-scan.csv`. |
+| `-S, --cut X` | Strict log2 score threshold. Default: `10`. |
 | `-q, --quiet` | Suppress informational stderr output. |
 | `-h, --help` | Print help and exit. |
 | `-v, --version` | Print version and exit. |
@@ -99,6 +102,46 @@ cat genes.gff | ./intergenic -i genome.fa -a - -o intergenic.gff
 ```
 
 Using both `-i -` and `-a -` is rejected.
+
+## Motif scanning
+
+When `-m` is supplied, each IGR sequence is scanned with every motif in the
+MEME 4 file:
+
+```sh
+./intergenic -i example.fa -a example.gff \
+  -m DnaA_box.txt -r dnaa-hits.csv -o intergenic.gff
+```
+
+The matrix parser reads:
+
+- `ALPHABET`;
+- `strands`;
+- background letter frequencies;
+- one or more `MOTIF` sections;
+- `letter-probability matrix` rows.
+
+The score is:
+
+```text
+sum(log2(P(base | motif) / P(base | background)))
+```
+
+Only hits with a score strictly greater than the threshold are reported. The
+default threshold is `10`. A MEME `strands: + -` record is scanned on both
+strands. Reverse-strand matches report the reverse-complemented sequence.
+
+If `-r` is not supplied, hits are written to `motif-scan.csv`. Use `-r -` only
+when the main sequence output is a file, because two outputs cannot share stdout.
+
+CSV columns:
+
+```text
+id,host,igr_start,igr_end,motif,strand,start,end,score,sequence
+```
+
+All coordinates are 1-based and inclusive. `start > end` indicates a hit that
+crosses a circular origin.
 
 ## Output selection
 

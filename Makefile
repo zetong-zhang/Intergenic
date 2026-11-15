@@ -15,8 +15,8 @@ TARGET := intergenic.exe
 else
 TARGET := intergenic
 endif
-SOURCES := src/Intergenic.cpp src/Classes.cpp src/Utils.cpp
-HEADERS := include/Classes.hpp include/Utils.hpp include/cxxopts.hpp
+SOURCES := src/Intergenic.cpp src/Classes.cpp src/Motif.cpp src/Utils.cpp
+HEADERS := include/Classes.hpp include/Motif.hpp include/Utils.hpp include/cxxopts.hpp
 
 .PHONY: all clean
 

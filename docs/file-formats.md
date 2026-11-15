@@ -48,7 +48,7 @@ interval has `start > end` and represents:
 One row is emitted per IGR:
 
 ```text
-host  INTERGENIC_v0.0.1  intergenic  start  end  .  .  .  ID=IGS000001;Adjacent=...
+host  INTERGENIC_v0.0.2  intergenic  start  end  .  .  .  ID=IGS000001;Adjacent=...
 ```
 
 GFF coordinates are 1-based and inclusive. An origin-spanning region remains a
@@ -92,3 +92,23 @@ host:start..end(strand),host:start..end(strand)
 
 Coordinates are 1-based and inclusive. `Adjacent=.` indicates no adjacent
 target feature.
+
+## Motif scan CSV
+
+When motif scanning is enabled, Intergenic writes a separate CSV file:
+
+```text
+id,host,igr_start,igr_end,motif,strand,start,end,score,sequence
+```
+
+- `id`: ID of the containing IGR.
+- `host`: sequence name.
+- `igr_start`, `igr_end`: 1-based inclusive IGR coordinates.
+- `motif`: MEME motif name.
+- `strand`: `+` or `-`.
+- `start`, `end`: 1-based inclusive genomic coordinates of the hit.
+- `score`: sum of log2 likelihood ratios against the MEME background.
+- `sequence`: matched bases in motif orientation.
+
+The report contains a header even when no hit passes the threshold. Circular
+hits may have `start > end`.

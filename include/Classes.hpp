@@ -13,8 +13,7 @@
  */
 class feature {
     public:
-    feature(std::string host, std::string type, int start, int end,
-            float score, char strand);
+    feature(std::string h, std::string t, int s, int e, float sc, char st);
 
     const std::string &host() const;
     const std::string &type() const;
@@ -26,10 +25,10 @@ class feature {
     bool wrapped() const;
 
     private:
-    std::string host_, type_;
-    int start_, end_;
-    float score_;
-    char strand_;
+    std::string h_, t_;
+    int s_, e_;
+    float sc_;
+    char st_;
 };
 
 /*
@@ -42,24 +41,24 @@ class feature_loader {
     public:
     feature_loader() = default;
     feature_loader(
-        const std::unordered_set<std::string> &types, float threshold
+        const std::unordered_set<std::string> &ts, float cut
     );
 
-    void load(std::istream &handle, const std::string &format);
+    void load(std::istream &in, const std::string &fmt);
     std::vector<feature> resolve(
-        const std::string &host, const std::vector<feature> &embedded
+        const std::string &h, const std::vector<feature> &emb
     ) const;
 
     private:
-    static feature parse(const std::string &line, const std::string &format);
-    bool accepts(const feature &item) const;
-    bool provides(const std::string &host) const;
-    const std::vector<feature> &features(const std::string &host) const;
+    static feature parse(const std::string &s, const std::string &fmt);
+    bool accepts(const feature &f) const;
+    bool provides(const std::string &h) const;
+    const std::vector<feature> &features(const std::string &h) const;
 
-    std::unordered_map<std::string, std::vector<feature>> features_;
-    std::unordered_set<std::string> provided_;
-    std::unordered_set<std::string> types_;
-    float threshold_ = 0.0F;
+    std::unordered_map<std::string, std::vector<feature>> lst_;
+    std::unordered_set<std::string> seen_;
+    std::unordered_set<std::string> ts_;
+    float cut_ = 0.0F;
 };
 
 /*
@@ -70,8 +69,8 @@ class feature_loader {
 class region {
     public:
     region(
-        std::string host, int start, int end,
-        std::string sequence, std::string adjacent
+        std::string h, int s, int e,
+        std::string seq, std::string near, int len, bool circ
     );
 
     const std::string &host() const;
@@ -79,12 +78,15 @@ class region {
     int end() const;
     const std::string &sequence() const;
     const std::string &adjacent() const;
+    int source_len() const;
+    bool circ() const;
     int length() const;
     bool wrapped() const;
 
     private:
-    std::string host_, sequence_, adjacent_;
-    int start_, end_;
+    std::string h_, seq_, near_;
+    int s_, e_, n_;
+    bool circ_;
 };
 
 /*
@@ -94,28 +96,28 @@ class region {
  */
 class scaffold {
     public:
-    bool load(std::istream &handle, bool default_circular = false);
+    bool load(std::istream &in, bool circ = false);
     const std::string &name() const;
     const std::vector<feature> &embedded_features() const;
     std::vector<region> extract(
-        const std::vector<feature> &masks, int minlen
+        const std::vector<feature> &ms, int min
     ) const;
 
     private:
-    bool next_line(std::istream &handle, std::string &line);
-    void read_header(const std::string &header, bool default_circular);
-    void parse_feature_line(const std::string &line);
-    bool is_adjacent(int start, int end, const feature &item) const;
+    bool next_line(std::istream &in, std::string &s);
+    void read_header(const std::string &h, bool circ);
+    void parse_feature_line(const std::string &s);
+    bool is_adjacent(int s, int e, const feature &f) const;
     std::string adjacent_features(
-        int start, int end, const std::vector<feature> &masks
+        int s, int e, const std::vector<feature> &ms
     ) const;
-    void mask(std::vector<char> &covered, const feature &item) const;
-    std::string subseq(int start, int end) const;
+    void mask(std::vector<char> &cov, const feature &f) const;
+    std::string subseq(int s, int e) const;
 
-    static void normalize(std::string &sequence);
-    static std::string record_name(const std::string &header);
+    static void normalize(std::string &seq);
+    static std::string record_name(const std::string &h);
 
-    std::string pending_, name_, sequence_;
-    std::vector<feature> embedded_features_;
-    bool circular_ = false;
+    std::string pend_, name_, seq_;
+    std::vector<feature> emb_;
+    bool circ_ = false;
 };
