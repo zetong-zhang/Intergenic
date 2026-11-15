@@ -28,6 +28,16 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
+      - name: Stage install
+        run: cmake --install build --config Release --prefix stage
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: intergenic-${{ matrix.os }}
+          path: stage
+          if-no-files-found: error
+
   compiler-matrix:
     name: Linux with ${{ matrix.compiler }}
     runs-on: ubuntu-latest
@@ -50,6 +60,13 @@ jobs:
         env:
           CXX: ${{ matrix.compiler }}
         run: make clean all
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: intergenic-linux-${{ matrix.compiler }}
+          path: intergenic
+          if-no-files-found: error
 
   zlib-build:
     name: Linux with zlib
@@ -82,3 +99,10 @@ jobs:
           cmp \
             <(grep -v '^#' "${plain}") \
             <(grep -v '^#' "${gzipped}")
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: intergenic-linux-zlib
+          path: build-zlib/intergenic
+          if-no-files-found: error
